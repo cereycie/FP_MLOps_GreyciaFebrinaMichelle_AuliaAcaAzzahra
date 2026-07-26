@@ -1,6 +1,6 @@
 # Chicago Crime Risk Score, MLOps Final Project
 
-SISTECH 2026, Machine Learning Operations path
+SISTECH 2026, Machine Learning Operations path, Group 4
 Greycia Febrina Michelle & Aulia Aca Azzahra
 
 ## Overview
