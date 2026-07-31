@@ -13,9 +13,17 @@ Disclaimer: this system produces an estimate based on historical patterns, not a
 
 ## Project Status
 
-- CP1, Pseudo-Labeling and Feature Engineering: done
+- CP1, Pseudo-Labeling and Feature Engineering: done, revised for FE integration (see Changelog)
 - CP2, Model Training, Baseline Comparison, REST API Serving: in progress
 - CP3, Continual Learning, Monitoring and Logging, Documentation: not started yet
+
+## Changelog
+
+### CP1 revision 2
+- Unified the clip bound used by the point-query function and the training table into one value, computed once from the full 726-cell grid instead of two separately calibrated numbers
+- Added timezone handling, timestamps sent with a UTC offset are converted to Chicago local time before scoring
+- Switched risk levels from three percentile-based tiers to four fixed tiers (Low/Medium/High/Very High at 25/50/75), matching the FE badge system
+- Documented that most locations read Very High under the fixed tiers, this reflects three years of accumulated crime history within 1200 meters, not a bug
 
 ## Repository Structure
 
