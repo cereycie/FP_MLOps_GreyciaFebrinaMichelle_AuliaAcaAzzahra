@@ -1,11 +1,17 @@
+from zoneinfo import ZoneInfo
+
 import numpy as np
 import pandas as pd
+from sklearn.neighbors import BallTree
 
 EARTH_RADIUS_M = 6371000
 HALF_LIFE_DAYS = 257
 BANDWIDTH_M = 400
 RADIUS_M = 1200
 GRID_DECIMALS = 2
+HOUR_BANDWIDTH = 4
+
+REFERENCE_TZ = ZoneInfo("America/Chicago")
 
 SEVERITY_DEFAULT_BY_TYPE = {
     "HOMICIDE": 100, "CRIMINAL SEXUAL ASSAULT": 92, "SEX OFFENSE": 60,
@@ -53,6 +59,12 @@ SEVERITY_OVERRIDE = {
 
 GLOBAL_FALLBACK_SEVERITY = 15
 
+CLIP_BOUND = 9.9818
+
+LOW_MAX = 25
+MEDIUM_MAX = 50
+HIGH_MAX = 75
+
 
 def score_severity(primary_type, description):
     key = (primary_type, description)
@@ -74,9 +86,16 @@ def hour_circular_distance(hour_a, hour_b):
     return np.minimum(diff, 24 - diff)
 
 
+def to_reference_naive(dt):
+    if dt.tzinfo is not None:
+        return dt.astimezone(REFERENCE_TZ).replace(tzinfo=None)
+    return dt
+
+
 def compute_risk_raw(query_lat, query_lon, query_hour, events, reference_date,
                       half_life_days=HALF_LIFE_DAYS, bandwidth_m=BANDWIDTH_M,
-                      radius_m=RADIUS_M, hour_bandwidth=4):
+                      radius_m=RADIUS_M, hour_bandwidth=HOUR_BANDWIDTH):
+    reference_date = to_reference_naive(reference_date)
     candidates = events[events["Datetime"] <= reference_date]
     dist_m = haversine_m(query_lat, query_lon, candidates["lat_r"].values, candidates["lon_r"].values)
     nearby_mask = dist_m <= radius_m
@@ -103,9 +122,88 @@ def compute_risk_raw(query_lat, query_lon, query_hour, events, reference_date,
     return float((nearby["severity"].values * w_time.values * w_space * w_hour).sum())
 
 
+def build_grid_risk_raw(events, reference_date, radius_m=RADIUS_M, bandwidth_m=BANDWIDTH_M,
+                         half_life_days=HALF_LIFE_DAYS, hour_bandwidth=HOUR_BANDWIDTH):
+    reference_date = to_reference_naive(reference_date)
+    events_valid = events[events["Datetime"] <= reference_date]
+
+    unique_cells = events_valid[["lat_r", "lon_r"]].drop_duplicates().reset_index(drop=True)
+    unique_cells["cell_id"] = unique_cells["lat_r"].astype(str) + "_" + unique_cells["lon_r"].astype(str)
+
+    coords_rad = np.radians(unique_cells[["lat_r", "lon_r"]].values)
+    tree = BallTree(coords_rad, metric="haversine")
+    neighbor_idx, neighbor_dist = tree.query_radius(
+        coords_rad, r=radius_m / EARTH_RADIUS_M, return_distance=True
+    )
+
+    events_by_cell = {
+        cell_id: group
+        for cell_id, group in events_valid.assign(
+            cell_id=events_valid["lat_r"].astype(str) + "_" + events_valid["lon_r"].astype(str)
+        ).groupby("cell_id")
+    }
+
+    lam = np.log(2) / half_life_days
+    rows = []
+
+    for cell_index, cell_row in unique_cells.iterrows():
+        neighbor_cell_ids = unique_cells.iloc[neighbor_idx[cell_index]]["cell_id"].values
+        neighbor_dists_m = neighbor_dist[cell_index] * EARTH_RADIUS_M
+        frames = []
+        dist_lookup = {}
+        for cid, dist in zip(neighbor_cell_ids, neighbor_dists_m):
+            if cid in events_by_cell:
+                group = events_by_cell[cid]
+                frames.append(group)
+                dist_lookup[cid] = dist
+
+        if not frames:
+            for h in range(24):
+                rows.append({
+                    "cell_id": cell_row["cell_id"], "lat_r": cell_row["lat_r"],
+                    "lon_r": cell_row["lon_r"], "hour": h, "risk_raw": 0.0,
+                    "nearby_crime_count": 0,
+                })
+            continue
+
+        nearby = pd.concat(frames, ignore_index=False)
+        nearby_dist_m = nearby["cell_id"].map(dist_lookup).values
+
+        age_days = (reference_date - nearby["Datetime"]).dt.total_seconds().values / 86400
+        w_time = np.exp(-lam * age_days)
+        w_space = np.exp(-0.5 * (nearby_dist_m / bandwidth_m) ** 2)
+
+        is_exact_midnight = (
+            (nearby["Datetime"].dt.hour == 0)
+            & (nearby["Datetime"].dt.minute == 0)
+            & (nearby["Datetime"].dt.second == 0)
+        ).values
+        severity_vals = nearby["severity"].values
+        candidate_hours = nearby["hour"].values
+
+        for h in range(24):
+            hour_dist = hour_circular_distance(candidate_hours, h)
+            w_hour = np.exp(-0.5 * (hour_dist / hour_bandwidth) ** 2)
+            w_hour = np.where(is_exact_midnight, 1.0, w_hour)
+            risk_raw = float((severity_vals * w_time * w_space * w_hour).sum())
+            rows.append({
+                "cell_id": cell_row["cell_id"], "lat_r": cell_row["lat_r"],
+                "lon_r": cell_row["lon_r"], "hour": h, "risk_raw": risk_raw,
+                "nearby_crime_count": len(nearby),
+            })
+
+    return pd.DataFrame(rows)
+
+
+def calibrate_clip_bound(events, reference_date, percentile=99):
+    grid = build_grid_risk_raw(events, reference_date)
+    return float(np.percentile(np.log1p(grid["risk_raw"]), percentile))
+
+
 def predict_risk_score(query_lat, query_lon, query_datetime, events, reference_date,
-                        clip_bound, half_life_days=HALF_LIFE_DAYS,
-                        bandwidth_m=BANDWIDTH_M, radius_m=RADIUS_M, hour_bandwidth=4):
+                        clip_bound=CLIP_BOUND, half_life_days=HALF_LIFE_DAYS,
+                        bandwidth_m=BANDWIDTH_M, radius_m=RADIUS_M, hour_bandwidth=HOUR_BANDWIDTH):
+    query_datetime = to_reference_naive(query_datetime)
     risk_raw = compute_risk_raw(query_lat, query_lon, query_datetime.hour, events, reference_date,
                                  half_life_days, bandwidth_m, radius_m, hour_bandwidth)
     log_val = np.log1p(risk_raw)
@@ -113,28 +211,9 @@ def predict_risk_score(query_lat, query_lon, query_datetime, events, reference_d
     return float(100 * clipped / clip_bound)
 
 
-def calibrate_clip_bound(events, reference_date, n_cells=200, hours=None, percentile=99, random_state=42):
-    if hours is None:
-        hours = [0, 3, 6, 9, 12, 15, 18, 21]
-
-    cells = events[["lat_r", "lon_r"]].drop_duplicates().reset_index(drop=True)
-    sample_cells = cells.sample(min(n_cells, len(cells)), random_state=random_state)
-
-    raw_values = []
-    for _, row in sample_cells.iterrows():
-        for h in hours:
-            raw_values.append(compute_risk_raw(row["lat_r"], row["lon_r"], h, events, reference_date))
-
-    raw_values = np.array(raw_values)
-    return float(np.percentile(np.log1p(raw_values), percentile))
-
-
-LOW_THRESHOLD = 70.72
-HIGH_THRESHOLD = 90.14
-
-
 def has_recent_nearby_incident(query_lat, query_lon, events, reference_date,
                                 radius_m=300, recency_days=3, severity_threshold=50):
+    reference_date = to_reference_naive(reference_date)
     candidates = events[events["Datetime"] <= reference_date]
     dist_m = haversine_m(query_lat, query_lon, candidates["lat_r"].values, candidates["lon_r"].values)
     age_days = (reference_date - candidates["Datetime"]).dt.total_seconds() / 86400
@@ -149,9 +228,11 @@ def has_recent_nearby_incident(query_lat, query_lon, events, reference_date,
 
 def categorize_level(risk_score, recent_incident_flag):
     if recent_incident_flag:
-        return "High"
-    if risk_score >= HIGH_THRESHOLD:
-        return "High"
-    if risk_score >= LOW_THRESHOLD:
+        return "Very High"
+    if risk_score <= LOW_MAX:
+        return "Low"
+    if risk_score <= MEDIUM_MAX:
         return "Medium"
-    return "Low"
+    if risk_score <= HIGH_MAX:
+        return "High"
+    return "Very High"
