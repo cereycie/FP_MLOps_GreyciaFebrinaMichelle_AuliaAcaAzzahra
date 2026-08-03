@@ -1,0 +1,17 @@
+{
+  "version": 0,
+  "feature_cols": [
+    "lat_r",
+    "lon_r",
+    "hour_sin",
+    "hour_cos",
+    "nearby_crime_count"
+  ],
+  "target_col": "risk_score",
+  "metrics_holdout": {
+    "MAE": 3.639,
+    "RMSE": 5.145,
+    "R2": 0.903
+  },
+  "updated_at": "2026-08-06T13:10:58.668937+00:00"
+}

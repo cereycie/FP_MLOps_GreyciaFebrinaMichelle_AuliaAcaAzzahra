@@ -122,6 +122,13 @@ def compute_risk_raw(query_lat, query_lon, query_hour, events, reference_date,
     return float((nearby["severity"].values * w_time.values * w_space * w_hour).sum())
 
 
+def get_nearby_crime_count(query_lat, query_lon, events, reference_date, radius_m=RADIUS_M):
+    reference_date = to_reference_naive(reference_date)
+    candidates = events[events["Datetime"] <= reference_date]
+    dist_m = haversine_m(query_lat, query_lon, candidates["lat_r"].values, candidates["lon_r"].values)
+    return int((dist_m <= radius_m).sum())
+
+
 def build_grid_risk_raw(events, reference_date, radius_m=RADIUS_M, bandwidth_m=BANDWIDTH_M,
                          half_life_days=HALF_LIFE_DAYS, hour_bandwidth=HOUR_BANDWIDTH):
     reference_date = to_reference_naive(reference_date)

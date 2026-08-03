@@ -1,0 +1,28 @@
+[
+  {
+    "version": 0,
+    "timestamp": "2026-08-06T13:10:58.269129+00:00",
+    "training_rows": 17424,
+    "feature_cols": [
+      "lat_r",
+      "lon_r",
+      "hour_sin",
+      "hour_cos",
+      "nearby_crime_count"
+    ],
+    "algorithm": "GradientBoostingRegressor",
+    "hyperparameters": {
+      "n_estimators": 150,
+      "max_depth": 3,
+      "random_state": 42
+    },
+    "holdout_metrics": {
+      "MAE": 3.639,
+      "RMSE": 5.145,
+      "R2": 0.903
+    },
+    "decision": "initial_model",
+    "reason": "First trained model for CP2, evaluated on a cell based holdout split before being retrained on the full table for deployment.",
+    "checkpoint_path": "models/model_v0.joblib"
+  }
+]

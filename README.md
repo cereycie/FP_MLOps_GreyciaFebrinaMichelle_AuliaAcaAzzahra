@@ -14,10 +14,22 @@ Disclaimer: this system produces an estimate based on historical patterns, not a
 ## Project Status
 
 - CP1, Pseudo-Labeling and Feature Engineering: done, revised for FE integration (see Changelog)
-- CP2, Model Training, Baseline Comparison, REST API Serving: in progress
+- CP2, Model Training, Baseline Comparison, REST API Serving: done (see Changelog)
 - CP3, Continual Learning, Monitoring and Logging, Documentation: not started yet
 
 ## Changelog
+
+### CP2
+- Trained and compared Linear Regression, Random Forest, and Gradient Boosting on `feature_table_fp.csv`, against two baselines (global mean, mean by hour)
+- Re-tested Random Forest and Gradient Boosting across four different random seeds for the train/test cell split, Gradient Boosting had the lower MAE in all four
+- Added `get_nearby_crime_count` to `src/pipeline.py`, an additive function that computes the same `nearby_crime_count` feature for an arbitrary coordinate, needed because the API accepts raw coordinates, not pre-engineered features
+- Rebuilt `api/main.py` and `api/schemas.py` around `GET /risk-score?lat=&lon=&datetime=`, matching the endpoint contract in the task document and the raw-coordinate input FE confirmed they will send
+- Fixed a startup bug where `@app.on_event("startup")` was silently not loading the model under the installed FastAPI version, replaced with the `lifespan` pattern
+- Added a short-circuit for locations with no recorded crime nearby, returning a score of 0 directly instead of asking the model to extrapolate below the lowest crime count it was trained on
+- Re-trained `champion.joblib` to match the 5-feature CP1 schema (`lat_r, lon_r, hour_sin, hour_cos, nearby_crime_count`), the checkpoint previously in this slot was left over from an unrelated Hands-On 2 pipeline with a different feature set
+- Added a cell to `02_model_training_baseline.ipynb` that saves `champion.joblib` and `champion_meta.json` directly, the notebook previously only saved `model_v0.joblib` and `registry.json`, so the API's expected artifact was never actually produced by running the notebook, only by a separate script
+- Pinned `scikit-learn==1.6.1` in `requirements.txt` to match the version Colab uses, loading `champion.joblib` on a different scikit-learn version raised an `InconsistentVersionWarning` that pip's unpinned `scikit-learn` would have reproduced on a fresh local install
+- Removed `COPY models/` from `Dockerfile`, `data/` and `models/` are both mounted as volumes at `docker run` time now instead of being baked into the image, consistent with keeping large or environment-specific artifacts out of anything committed or built
 
 ### CP1 revision 2
 - Unified the clip bound used by the point-query function and the training table into one value, computed once from the full 726-cell grid instead of two separately calibrated numbers
@@ -31,17 +43,55 @@ Disclaimer: this system produces an estimate based on historical patterns, not a
 |---|---|
 | `notebooks/` | Step by step notebooks for each stage of the project |
 | `src/` | Shared logic reused by both notebooks and the API, so scoring behaves identically in training and serving |
-| `app/` | The FastAPI application, added in CP2 |
-| `models/` | Saved model checkpoints and the version registry, added in CP2 and CP3 |
-| `logs/` | Prediction activity logs, added in CP2 |
-| `data/` | Instructions for obtaining the raw dataset |
+| `api/` | The FastAPI application, added in CP2 |
+| `models/` | Saved model checkpoint and registry, not committed to Git, see `models/README.md` |
+| `data/` | Instructions for obtaining the raw dataset, see `data/README.md` |
+| `FP_MLOps_GreyciaFebrinaMichelle_AuliaAcaAzzahra_Output.json` | Example predictions from a real run of the API |
 
 ## How to Run the Notebooks
 
 1. Get `events_scored.csv` following the instructions in `data/README.md`
 2. Install dependencies: `pip install -r requirements.txt`
 3. Open `notebooks/01_pseudo_labeling_feature_engineering.ipynb` and run all cells in order
+4. Open `notebooks/02_model_training_baseline.ipynb` and run all cells in order, this produces `models/champion.joblib` and `models/registry.json`
 
 ## How to Run the API
 
-Not available yet, this section will be filled in once CP2 is complete.
+1. Make sure `data/events_scored.csv` and `data/feature_table_fp.csv` are in place, see `data/README.md`
+2. Make sure `models/champion.joblib` and `models/champion_meta.json` exist, see `models/README.md` if they are missing
+3. Install dependencies: `pip install -r requirements.txt`
+4. From the project root, start the server:
+
+```
+uvicorn api.main:app --reload
+```
+
+5. Call the endpoint:
+
+```
+curl "http://127.0.0.1:8000/risk-score?lat=41.89&lon=-87.63&datetime=2026-08-03T20:00:00"
+```
+
+Example response:
+
+```json
+{
+  "risk_score": 99.79,
+  "level": "Very High",
+  "model_version": "v0",
+  "last_updated": "2026-08-06"
+}
+```
+
+A location with no recorded crime within 1200 meters returns `"risk_score": 0.0, "level": "Low"` instead of a model prediction, since the model was never trained on locations with zero history and should not guess at that extreme.
+
+## How to Run with Docker
+
+The image only contains code, `data/` and `models/` are mounted at run time rather than baked in, so the image never needs rebuilding just because the data or the model changed.
+
+```
+docker build -t risk-score-api .
+docker run -p 8000:8000 -v $(pwd)/data:/app/data -v $(pwd)/models:/app/models risk-score-api
+```
+
+On Windows PowerShell, replace `$(pwd)` with `${PWD}`.

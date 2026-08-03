@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Large data and model artifacts, downloaded separately, see data/README.md and models/README.md
+data/*.csv
+models/*.joblib

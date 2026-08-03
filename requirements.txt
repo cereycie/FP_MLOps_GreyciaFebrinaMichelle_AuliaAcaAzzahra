@@ -3,4 +3,8 @@ pandas
 matplotlib
 seaborn
 scipy
-scikit-learn
+scikit-learn==1.6.1
+fastapi
+uvicorn
+joblib
+pydantic

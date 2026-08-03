@@ -1,0 +1,84 @@
+{
+  "project": "FP_MLOps_GreyciaFebrinaMichelle_AuliaAcaAzzahra",
+  "checkpoint": "CP2",
+  "endpoint": "GET /risk-score?lat=&lon=&datetime=",
+  "generated_from": "Real API call against champion.joblib (GradientBoostingRegressor, feature_table_fp.csv, 17424 rows)",
+  "generated_at": "2026-08-06T13:04:00+00:00",
+  "results": [
+    {
+      "label": "Lokasi riwayat kejahatan tinggi, malam hari",
+      "request": {
+        "lat": 41.89,
+        "lon": -87.63,
+        "datetime": "2026-08-03T22:00:00"
+      },
+      "response": {
+        "risk_score": 99.33,
+        "level": "Very High",
+        "model_version": "v0",
+        "last_updated": "2026-08-06"
+      },
+      "status_code": 200
+    },
+    {
+      "label": "Lokasi riwayat kejahatan tinggi, siang hari",
+      "request": {
+        "lat": 41.89,
+        "lon": -87.63,
+        "datetime": "2026-08-03T10:00:00"
+      },
+      "response": {
+        "risk_score": 98.77,
+        "level": "Very High",
+        "model_version": "v0",
+        "last_updated": "2026-08-06"
+      },
+      "status_code": 200
+    },
+    {
+      "label": "Lokasi riwayat kejahatan rendah",
+      "request": {
+        "lat": 41.69,
+        "lon": -87.58,
+        "datetime": "2026-08-03T14:00:00"
+      },
+      "response": {
+        "risk_score": 38.23,
+        "level": "Medium",
+        "model_version": "v0",
+        "last_updated": "2026-08-06"
+      },
+      "status_code": 200
+    },
+    {
+      "label": "Tidak ada riwayat kejahatan di radius (luar Chicago)",
+      "request": {
+        "lat": 45.0,
+        "lon": -100.0,
+        "datetime": "2026-08-03T14:00:00"
+      },
+      "response": {
+        "risk_score": 0.0,
+        "level": "Low",
+        "model_version": "v0",
+        "last_updated": "2026-08-06"
+      },
+      "status_code": 200
+    },
+    {
+      "label": "Query dengan timezone WIB",
+      "request": {
+        "lat": 41.89,
+        "lon": -87.63,
+        "datetime": "2026-08-04T09:00:00+07:00"
+      },
+      "response": {
+        "risk_score": 99.49,
+        "level": "Very High",
+        "model_version": "v0",
+        "last_updated": "2026-08-06"
+      },
+      "status_code": 200
+    }
+  ]
+}
