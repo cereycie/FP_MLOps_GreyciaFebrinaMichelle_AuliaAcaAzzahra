@@ -220,3 +220,6 @@ __marimo__/
 # Large data and model artifacts, downloaded separately, see data/README.md and models/README.md
 data/*.csv
 models/*.joblib
+
+# Prediction activity log, created at runtime, see logs/README.md
+logs/*.jsonl

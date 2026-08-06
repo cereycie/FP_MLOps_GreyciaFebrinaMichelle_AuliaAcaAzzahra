@@ -1,28 +1,133 @@
 [
   {
     "version": 0,
-    "timestamp": "2026-08-06T13:10:58.269129+00:00",
-    "training_rows": 17424,
-    "feature_cols": [
-      "lat_r",
-      "lon_r",
-      "hour_sin",
-      "hour_cos",
-      "nearby_crime_count"
-    ],
-    "algorithm": "GradientBoostingRegressor",
-    "hyperparameters": {
-      "n_estimators": 150,
-      "max_depth": 3,
-      "random_state": 42
+    "batch": "2024",
+    "timestamp": "2026-08-06T15:09:22.144691+00:00",
+    "train_rows_event": 257531,
+    "drift_detected": true,
+    "drift_report": {
+      "note": "initial training, no prior batch to compare"
     },
-    "holdout_metrics": {
-      "MAE": 3.639,
-      "RMSE": 5.145,
-      "R2": 0.903
+    "candidate_metrics": {
+      "MAE": 3.3489096155385165,
+      "RMSE": 4.843787902551404,
+      "R2": 0.916639628734448
     },
-    "decision": "initial_model",
-    "reason": "First trained model for CP2, evaluated on a cell based holdout split before being retrained on the full table for deployment.",
-    "checkpoint_path": "models/model_v0.joblib"
+    "champion_metrics_before": 3.3489096155385165,
+    "promote_margin": 0.186,
+    "decision": "initial_champion",
+    "checkpoint_path": "/content/drive/MyDrive/SISTECH/model_v0.joblib"
+  },
+  {
+    "version": 1,
+    "batch": "2025Q1",
+    "timestamp": "2026-08-06T15:09:35.938408+00:00",
+    "train_rows_event": 311594,
+    "drift_detected": true,
+    "drift_report": {
+      "nearby_crime_count": {
+        "ks_stat": 0.07663905819060912,
+        "p_value": 1.8131446374883694e-42,
+        "drift": true
+      },
+      "risk_raw": {
+        "ks_stat": 0.07302395808505568,
+        "p_value": 1.3640677702676447e-38,
+        "drift": true
+      }
+    },
+    "candidate_metrics": {
+      "MAE": 3.340628988237623,
+      "RMSE": 4.880205588782768,
+      "R2": 0.9104321662988227
+    },
+    "champion_metrics_before": 3.8276889429941603,
+    "promote_margin": 0.186,
+    "decision": "promoted",
+    "checkpoint_path": "/content/drive/MyDrive/SISTECH/model_v1.joblib"
+  },
+  {
+    "version": null,
+    "batch": "2025Q2",
+    "timestamp": "2026-08-06T15:09:50.171503+00:00",
+    "train_rows_event": 372162,
+    "drift_detected": true,
+    "drift_report": {
+      "nearby_crime_count": {
+        "ks_stat": 0.06796443429039078,
+        "p_value": 1.855090349466963e-33,
+        "drift": true
+      },
+      "risk_raw": {
+        "ks_stat": 0.05555810117302051,
+        "p_value": 1.7058480128756154e-22,
+        "drift": true
+      }
+    },
+    "candidate_metrics": {
+      "MAE": 3.4754955628711115,
+      "RMSE": 5.067020406782063,
+      "R2": 0.9074659978309871
+    },
+    "champion_metrics_before": 3.59154891928246,
+    "promote_margin": 0.186,
+    "decision": "kept_champion",
+    "checkpoint_path": "/content/drive/MyDrive/SISTECH/model_v1_rejected_2025Q2.joblib"
+  },
+  {
+    "version": 2,
+    "batch": "2025Q3",
+    "timestamp": "2026-08-06T15:10:05.123526+00:00",
+    "train_rows_event": 436430,
+    "drift_detected": true,
+    "drift_report": {
+      "nearby_crime_count": {
+        "ks_stat": 0.04918727670654588,
+        "p_value": 1.3494307312838049e-17,
+        "drift": true
+      },
+      "risk_raw": {
+        "ks_stat": 0.03894551423455217,
+        "p_value": 3.4367341003371546e-11,
+        "drift": true
+      }
+    },
+    "candidate_metrics": {
+      "MAE": 3.3075104808909814,
+      "RMSE": 4.9087387432018925,
+      "R2": 0.9131788534461599
+    },
+    "champion_metrics_before": 4.218483657868587,
+    "promote_margin": 0.186,
+    "decision": "promoted",
+    "checkpoint_path": "/content/drive/MyDrive/SISTECH/model_v2.joblib"
+  },
+  {
+    "version": null,
+    "batch": "2025Q4",
+    "timestamp": "2026-08-06T15:10:20.646000+00:00",
+    "train_rows_event": 493151,
+    "drift_detected": true,
+    "drift_report": {
+      "nearby_crime_count": {
+        "ks_stat": 0.08270568223413644,
+        "p_value": 4.129379788600688e-49,
+        "drift": true
+      },
+      "risk_raw": {
+        "ks_stat": 0.06597316423716532,
+        "p_value": 2.1670284278429594e-31,
+        "drift": true
+      }
+    },
+    "candidate_metrics": {
+      "MAE": 3.4155533520686343,
+      "RMSE": 5.016042596521521,
+      "R2": 0.9110674803505407
+    },
+    "champion_metrics_before": 3.5121230270435007,
+    "promote_margin": 0.186,
+    "decision": "kept_champion",
+    "checkpoint_path": "/content/drive/MyDrive/SISTECH/model_v2_rejected_2025Q4.joblib"
   }
 ]
