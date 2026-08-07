@@ -2,8 +2,9 @@ import json
 import sys
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -19,7 +20,19 @@ from pipeline import (
     has_recent_nearby_incident,
     REFERENCE_TZ,
 )
-from api.schemas import RiskScoreResponse
+from api.schemas import (
+    RiskScoreResponse,
+    StartJourneyRequest,
+    StartJourneyResponse,
+    VerifyPinRequest,
+    VerifyPinResponse,
+    EndJourneyRequest,
+    EndJourneyResponse,
+    ExtendJourneyRequest,
+    ExtendJourneyResponse,
+    ForgotPinRequest,
+    ForgotPinResponse,
+)
 
 MODELS_DIR = PROJECT_ROOT / "models"
 EVENTS_PATH = PROJECT_ROOT / "data" / "events_scored.csv"
@@ -28,17 +41,29 @@ LOG_PATH = PROJECT_ROOT / "logs" / "predictions.jsonl"
 model = None
 model_meta = None
 events = None
+TEST_MODE = True
 
+sharelock_sessions = {}
+
+def check_session_expiry(session):
+    if datetime.now(timezone.utc) > session["expires_at"]:
+        session["status"] = "EXPIRED"
+    return session
 
 def _load_state():
     global model, model_meta, events
     try:
         model, model_meta = load_champion(models_dir=MODELS_DIR)
     except FileNotFoundError as e:
-        raise RuntimeError(
+        if not TEST_MODE:
+            raise RuntimeError(
             "champion.joblib tidak ditemukan di folder models/. "
             "Jalankan notebook training dulu sebelum menjalankan API ini."
         ) from e
+
+    model = None
+    model_meta = None
+
     events = pd.read_csv(EVENTS_PATH, parse_dates=["Datetime"])
     LOG_PATH.parent.mkdir(exist_ok=True)
 
@@ -188,3 +213,200 @@ def metrics(last_n: int = 100):
         summary["predictions_in_window"] = 0
 
     return summary
+
+@app.post("/sharelock/start", response_model=StartJourneyResponse)
+def start_sharelock(request: StartJourneyRequest):
+    session_id = str(uuid4())
+
+    started_at = datetime.now(timezone.utc)
+    expires_at = started_at + timedelta(
+        minutes=request.duration_minutes
+    )
+
+    tracking_link = (
+        f"http://localhost:8000/sharelock/public/{session_id}"
+    )
+
+    sharelock_sessions[session_id] = {
+        "session_id": session_id,
+        "latitude": request.latitude,
+        "longitude": request.longitude,
+        "pin": request.pin,
+        "status": "ACTIVE",
+        "started_at": started_at,
+        "expires_at": expires_at,
+        "tracking_link": tracking_link,
+        "pin_attempt": 0,
+        "verified": False,
+    }
+
+    return StartJourneyResponse(
+        session_id=session_id,
+        status="ACTIVE",
+        started_at=started_at,
+        expires_at=expires_at,
+        tracking_link=tracking_link,
+    )
+
+@app.get("/sharelock/public/{session_id}")
+def public_tracking(session_id: str):
+    session = sharelock_sessions.get(session_id)
+
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Session Sharelock tidak ditemukan."
+        )
+    
+    session = check_session_expiry(session)
+
+    return {
+        "session_id": session["session_id"],
+        "status": session["status"],
+        "latitude": session["latitude"],
+        "longitude": session["longitude"],
+        "started_at": session["started_at"],
+        "expires_at": session["expires_at"],
+    }
+
+@app.post("/sharelock/verify-pin", response_model=VerifyPinResponse)
+def verify_sharelock_pin(request: VerifyPinRequest):
+    session = sharelock_sessions.get(request.session_id)
+
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Session Sharelock tidak ditemukan."
+        )
+
+    session = check_session_expiry(session)
+
+    if session["status"] != "ACTIVE":
+        return VerifyPinResponse(
+            success=False,
+            message="Sesi Sharelock sudah tidak aktif."
+        )
+
+    if session["pin_attempt"] >= 3:
+        return VerifyPinResponse(
+            success=False,
+            message="Percobaan PIN sudah mencapai batas. Silakan reset PIN."
+        )
+
+    # PIN benar
+    if request.pin == session["pin"]:
+        session["verified"] = True
+
+        return VerifyPinResponse(
+            success=True,
+            message="PIN berhasil diverifikasi."
+        )
+
+    # PIN salah
+    session["pin_attempt"] += 1
+
+    if session["pin_attempt"] >= 3:
+        return VerifyPinResponse(
+            success=False,
+            message="PIN salah 3 kali. Silakan lakukan reset PIN."
+        )
+
+    remaining_attempts = 3 - session["pin_attempt"]
+
+    return VerifyPinResponse(
+        success=False,
+        message=f"PIN salah. Sisa percobaan: {remaining_attempts}."
+    )
+
+@app.post("/sharelock/end", response_model=EndJourneyResponse)
+def end_sharelock(request: EndJourneyRequest):
+    session = sharelock_sessions.get(request.session_id)
+
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Session Sharelock tidak ditemukan."
+        )
+    session = check_session_expiry(session)
+
+    if session["status"] != "ACTIVE":
+        return EndJourneyResponse(
+            success=False,
+            status=session["status"],
+            message="Sesi Sharelock sudah tidak aktif."
+        )
+
+    if request.pin != session["pin"]:
+        return EndJourneyResponse(
+            success=False,
+            status="ACTIVE",
+            message="PIN salah. Sesi masih berjalan."
+        )
+
+    session["status"] = "SAFE_ARRIVAL"
+    session["verified"] = True
+
+    return EndJourneyResponse(
+        success=True,
+        status="SAFE_ARRIVAL",
+        message="Perjalanan berhasil dikonfirmasi. Live location dihentikan."
+    )
+
+@app.post("/sharelock/extend", response_model=ExtendJourneyResponse)
+def extend_sharelock(request: ExtendJourneyRequest):
+    session = sharelock_sessions.get(request.session_id)
+
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Session Sharelock tidak ditemukan."
+        )
+
+    session = check_session_expiry(session)
+
+    if session["status"] != "ACTIVE":
+        return ExtendJourneyResponse(
+            success=False,
+            status=session["status"],
+            expires_at=session["expires_at"],
+            message="Sesi Sharelock sudah tidak aktif."
+        )
+
+    session["expires_at"] = session["expires_at"] + timedelta(minutes=10)
+
+    return ExtendJourneyResponse(
+        success=True,
+        status="ACTIVE",
+        expires_at=session["expires_at"],
+        message="Durasi Sharelock berhasil diperpanjang 10 menit."
+    )
+
+@app.post("/sharelock/forgot-pin", response_model=ForgotPinResponse)
+def forgot_sharelock_pin(request: ForgotPinRequest):
+    session = sharelock_sessions.get(request.session_id)
+
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Session Sharelock tidak ditemukan."
+        )
+
+    session = check_session_expiry(session)
+    
+    if session["status"] != "ACTIVE":
+        return ForgotPinResponse(
+            success=False,
+            status=session["status"],
+            message="Sesi Sharelock sudah tidak aktif.",
+            waiting_timer_paused=False,
+        )
+
+    session["waiting_timer_paused"] = True
+    session["pin_reset_requested"] = True
+
+    return ForgotPinResponse(
+        success=True,
+        status="PIN_RESET_REQUIRED",
+        message="Silakan lakukan reset PIN melalui email terdaftar.",
+        waiting_timer_paused=True,
+    )
