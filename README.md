@@ -53,6 +53,7 @@ Disclaimer: this system produces an estimate based on historical patterns, not a
 | `notebooks/` | Step by step notebooks for each stage of the project |
 | `src/` | Shared logic reused by both notebooks and the API, so scoring behaves identically in training and serving |
 | `api/` | The FastAPI application, added in CP2 |
+| `api/sharelock.py` | Smart Sharelock backend, a separate team feature unrelated to Risk Score, see the section below |
 | `models/` | Saved model checkpoints and the version registry, not committed to Git, see `models/README.md` |
 | `data/` | Instructions for obtaining the raw dataset, see `data/README.md` |
 | `logs/` | Prediction activity log, created automatically the first time the API runs, see `logs/README.md` |
@@ -107,6 +108,14 @@ curl "http://127.0.0.1:8000/metrics"
 ## How to Run with Docker
 
 The image only contains code, `data/` and `models/` are mounted at run time rather than baked in, so the image never needs rebuilding just because the data or the model changed.
+
+## Smart Sharelock Endpoints
+
+`/sharelock/start`, `/sharelock/verify-pin`, `/sharelock/end`, `/sharelock/extend`, and `/sharelock/forgot-pin` live in this API too, but they have nothing to do with Risk Score. They serve the group's additional feature, Smart Sharelock & PIN-Protected Safe Arrival. The original PRD assumed the whole thing could run client-side; the team later confirmed a backend was actually needed.
+
+The code sits in `api/sharelock.py`, wired into `main.py` through a single `include_router` call. A bug in this feature cannot stop the model from loading or break `/risk-score` at startup, since the two are otherwise unconnected. Sessions live in memory, not a database, so they disappear if the server restarts. `start` and `verify-pin` have been tested end to end. `end`, `extend`, and `forgot-pin` follow the same pattern but have not been exercised individually yet.
+
+This section exists to answer the obvious question before anyone asks it: a crime risk prediction API does not normally need a PIN verification flow. This one does, because two unrelated features happen to share a server for now.
 
 ```
 docker build -t risk-score-api .
